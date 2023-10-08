@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     bool create = false, extract = false, list = false, delete = false, update = false;
 
     if (argc < 2) {
-        fprintf(stderr, "Comando: %s <-opcion1> <-opcion2> <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
+        fprintf(stderr, "Comando: %s <-opcion1> <-opcion2> <-opcionN> <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
         exit(1);
     }
 
