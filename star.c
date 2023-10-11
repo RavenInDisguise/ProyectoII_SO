@@ -3,9 +3,13 @@
 #include <string.h>
 #include <stdbool.h>
 
+#define MAX_FILE_NAME 20
+#define MAX_ARCHIVE_SIZE 100
+
 // Estructura para el encabezado de archivo en el archivo de salida
+// Según el profesor, el tamaño máximo de nombre de archivo es 20
 struct FileHeader {
-    char name[100];
+    char name[MAX_FILE_NAME];
     unsigned int size;
 };
 
@@ -38,7 +42,7 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
         // Lee el contenido del archivo de entrada
         fseek(inputFile, 0, SEEK_END);
         long fileSize = ftell(inputFile);
-        fseek(inputFile, 0, SEEK_SET);
+        rewind(inputFile);
 
         // Crea un encabezado para el archivo
         struct FileHeader header;
@@ -49,14 +53,24 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
         // Escribe el contenido del archivo en el archivo de salida
+        /*
         char buffer[1024];
         size_t bytesRead;
         while ((bytesRead = fread(buffer, 1, sizeof(buffer), inputFile)) > 0)
         {
             fwrite(buffer, 1, bytesRead, outFile);
         }
+        */
+        // Otra forma, porque creo que a como estaba seguía imponiendo máximo 1024 de lectura
+        char* buffer;
+        buffer = (char *)calloc(fileSize, sizeof(char));
+        size_t bytesRead;
+        while ( (bytesRead = fread(buffer, 1, sizeof(buffer), inputFile)) > 0 ) {
+            fwrite(buffer, 1, bytesRead, outFile);
+        }
 
-        // Cierra el archivo de entrada
+        // Libera el buffer y cierra el archivo
+        free(buffer);
         fclose(inputFile);
     }
 
