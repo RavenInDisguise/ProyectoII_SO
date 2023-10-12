@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include "verbose.h"
 
 #define MAX_FILE_NAME 200 //TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
 #define MAX_ARCHIVE_SIZE 100
@@ -13,32 +14,40 @@ struct FileHeader {
 };
 
 void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
-    printf("Nombre del archivo de salida: %s\n", outputFile);
+    verbose("Nombre del archivo de salida: %s\n", outputFile);
 
     FILE *outFile = fopen(outputFile, "wb");
     if (!outFile) {
-        perror("Error al abrir el archivo de salida");
+        perror("Error al abrir el archivo de salida\n");
         exit(1);
     }
 
+    verbose("Abriendo los archivos de entrada...\n");
+
     for (int i = 0; i < numFiles; i++) {
+
+        verbose("Leyendo %s en memoria...\n", inputFiles[i]);
         FILE *inputFile = fopen(inputFiles[i], "rb");
         if (!inputFile) {
-            perror("Error al abrir el archivo de entrada");
+            perror("Error al abrir el archivo de entrada\n");
             fclose(outFile);
             exit(1);
         }
 
+        verbose("Calculando tamaño de archivo en paquete...\n");
         fseek(inputFile, 0, SEEK_END);
         long fileSize = ftell(inputFile);
         rewind(inputFile);
 
+
+        verbose("Creando cabecera de metadatos...\n");
         struct FileHeader header;
         strncpy(header.name, inputFiles[i], sizeof(header.name));
         header.size = (unsigned int)fileSize;
-
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
+
+        verbose("Copiando datos al paquete %s...\n", outputFile);
         char *buffer;
         buffer = (char *)calloc(fileSize, sizeof(char));
         size_t bytesRead;
@@ -46,12 +55,14 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
             fwrite(buffer, 1, bytesRead, outFile);
         }
 
+        verbose("Liberando buffers de memoria...\n");
         free(buffer);
         fclose(inputFile);
+        verbose("Se agregó el archivo %s al paquete %s\n", inputFiles[i], outputFile);
     }
 
     fclose(outFile);
-    printf("Crear archivo tar: %s\n", outputFile);
+    verbose("Se creó el archivo star: %s\n", outputFile);
 }
 
 void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[]) {
@@ -158,6 +169,9 @@ int main(int argc, char *argv[]) {
             argIndex++;
         } else if (strcmp(argv[argIndex], "-u") == 0) {
             update = true;
+            argIndex++;
+        } else if (strcmp(argv[argIndex], "-v") == 0) {
+            setVerbose(true);
             argIndex++;
         } else if (strcmp(argv[argIndex], "-f") == 0) {
             argIndex++;
