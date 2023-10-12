@@ -22,11 +22,11 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
         exit(1);
     }
 
-    verbose("Abriendo los archivos de entrada...\n");
+    vverbose("Abriendo los archivos de entrada...\n");
 
     for (int i = 0; i < numFiles; i++) {
 
-        verbose("Leyendo %s en memoria...\n", inputFiles[i]);
+        vverbose("Leyendo %s en memoria...\n", inputFiles[i]);
         FILE *inputFile = fopen(inputFiles[i], "rb");
         if (!inputFile) {
             perror("Error al abrir el archivo de entrada\n");
@@ -34,20 +34,20 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
             exit(1);
         }
 
-        verbose("Calculando tamaño de archivo en paquete...\n");
+        vverbose("Calculando tamaño de archivo en paquete...\n");
         fseek(inputFile, 0, SEEK_END);
         long fileSize = ftell(inputFile);
         rewind(inputFile);
 
 
-        verbose("Creando cabecera de metadatos...\n");
+        vverbose("Creando cabecera de metadatos...\n");
         struct FileHeader header;
         strncpy(header.name, inputFiles[i], sizeof(header.name));
         header.size = (unsigned int)fileSize;
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
 
-        verbose("Copiando datos al paquete %s...\n", outputFile);
+        vverbose("Copiando datos al paquete %s...\n", outputFile);
         char *buffer;
         buffer = (char *)calloc(fileSize, sizeof(char));
         size_t bytesRead;
@@ -55,10 +55,10 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
             fwrite(buffer, 1, bytesRead, outFile);
         }
 
-        verbose("Liberando buffers de memoria...\n");
+        vverbose("Liberando buffers de memoria...\n");
         free(buffer);
         fclose(inputFile);
-        verbose("Se agregó el archivo %s al paquete %s\n", inputFiles[i], outputFile);
+        vverbose("Se agregó el archivo %s al paquete %s\n", inputFiles[i], outputFile);
     }
 
     fclose(outFile);
@@ -128,7 +128,7 @@ void list_tar(const char *archiveFile) {
     struct FileHeader header;
     while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
         printf("Nombre de archivo: %s\n", header.name);
-        printf("Tamaño del archivo: %u bytes\n", header.size);
+        verbose("Tamaño del archivo: %u bytes\n", header.size);
 
         fseek(tarFile, header.size, SEEK_CUR);
     }
@@ -145,6 +145,9 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[]) {
     verbose("Actualizar archivo tar: %s\n", archiveFile);
 }
 
+/*
+* TODO: implementar logica de buscar hueco donde quepa el archivo nuevo
+*/
 void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[]){
     verbose("Añadiendo archivos al paquete %s\n", archiveFile);
 
@@ -220,6 +223,10 @@ int main(int argc, char *argv[]) {
             argIndex++;
         } else if (strcmp(argv[argIndex], "-u") == 0) {
             update = true;
+            argIndex++;
+        } else if (strcmp(argv[argIndex], "-vv") == 0) {
+            setStrongVerbose(true);
+            setVerbose(true);
             argIndex++;
         } else if (strcmp(argv[argIndex], "-v") == 0) {
             setVerbose(true);

@@ -4,4 +4,6 @@
 #endif
 
 int verbose(const char * restrict, ...);
+int vverbose(const char * restrict, ...);
 void setVerbose(bool);
+void setStrongVerbose(bool);
