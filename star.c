@@ -138,11 +138,62 @@ void list_tar(const char *archiveFile) {
 }
 
 void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[]) {
-    printf("Borrar archivos de %s\n", archiveFile);
+    verbose("Borrar archivos de %s\n", archiveFile);
 }
 
 void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[]) {
-    printf("Actualizar archivo tar: %s\n", archiveFile);
+    verbose("Actualizar archivo tar: %s\n", archiveFile);
+}
+
+void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[]){
+    verbose("Añadiendo archivos al paquete %s\n", archiveFile);
+
+    FILE *outFile = fopen(archiveFile, "ab");
+    if (!outFile) {
+        perror("Error al abrir el archivo de salida\n");
+        exit(1);
+    }
+
+    for (int i = 0; i < numFiles; i++) {
+
+        verbose("Leyendo %s en memoria...\n", filesToAppend[i]);
+        FILE *inputFile = fopen(filesToAppend[i], "rb");
+        if (!inputFile) {
+            perror("Error al abrir el archivo de entrada\n");
+            fclose(outFile);
+            exit(1);
+        }
+
+        verbose("Calculando tamaño de archivo en paquete...\n");
+        fseek(inputFile, 0, SEEK_END);
+        long fileSize = ftell(inputFile);
+        rewind(inputFile);
+
+
+        verbose("Creando cabecera de metadatos...\n");
+        struct FileHeader header;
+        strncpy(header.name, filesToAppend[i], sizeof(header.name));
+        header.size = (unsigned int)fileSize;
+        fwrite(&header, sizeof(struct FileHeader), 1, outFile);
+
+
+        verbose("Copiando datos al paquete %s...\n", archiveFile);
+        char *buffer;
+        buffer = (char *)calloc(fileSize, sizeof(char));
+        size_t bytesRead;
+        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0) {
+            fwrite(buffer, 1, bytesRead, outFile);
+        }
+
+        verbose("Liberando buffers de memoria...\n");
+        free(buffer);
+        fclose(inputFile);
+        verbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
+    }
+
+    fclose(outFile);
+    verbose("Se agregó al paquete star: %s\n", archiveFile);
+
 }
 
 int main(int argc, char *argv[]) {
@@ -150,7 +201,7 @@ int main(int argc, char *argv[]) {
     char *outputFile = NULL;
     int numFiles = 0;
     char *inputFiles[argc];
-    bool create = false, extract = false, list = false, delete = false, update = false;
+    bool create = false, extract = false, list = false, delete = false, update = false, append = false;
 
     if (argc < 3) {
         fprintf(stderr, "Comando: %s -c|-x|-t|-d|-u -f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
@@ -172,6 +223,9 @@ int main(int argc, char *argv[]) {
             argIndex++;
         } else if (strcmp(argv[argIndex], "-v") == 0) {
             setVerbose(true);
+            argIndex++;
+        } else if (strcmp(argv[argIndex], "-r") == 0) {
+            append = true;
             argIndex++;
         } else if (strcmp(argv[argIndex], "-f") == 0) {
             argIndex++;
@@ -198,6 +252,8 @@ int main(int argc, char *argv[]) {
         delete_tar(outputFile, numFiles, inputFiles);
     } else if (update) {
         update_tar(outputFile, numFiles, inputFiles);
+    } else if (append) {
+        append_tar(outputFile, numFiles, inputFiles);
     }
 
     return 0;
