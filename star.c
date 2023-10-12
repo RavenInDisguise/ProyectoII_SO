@@ -3,115 +3,146 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MAX_FILE_NAME 20
+#define MAX_FILE_NAME 200 //TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
 #define MAX_ARCHIVE_SIZE 100
 
 // Estructura para el encabezado de archivo en el archivo de salida
-// Según el profesor, el tamaño máximo de nombre de archivo es 20
 struct FileHeader {
     char name[MAX_FILE_NAME];
     unsigned int size;
 };
 
 void create_tar(const char *outputFile, int numFiles, char *inputFiles[]) {
-    // Implementa la lógica para crear un archivo tar aquí
-    
-    // Implementa la lógica para crear un archivo tar aquí
-  
-    printf("Nombre del archivo de salida: %s\n", outputFile); // Agrega esta línea para depurar
+    printf("Nombre del archivo de salida: %s\n", outputFile);
 
-    // Abre el archivo de salida en modo escritura (creándolo si no existe)
     FILE *outFile = fopen(outputFile, "wb");
-    if (!outFile)
-    {
+    if (!outFile) {
         perror("Error al abrir el archivo de salida");
         exit(1);
     }
 
-    // Itera sobre los archivos de entrada y empaquétalos en el archivo de salida
-    for (int i = 0; i < numFiles; i++)
-    {
+    for (int i = 0; i < numFiles; i++) {
         FILE *inputFile = fopen(inputFiles[i], "rb");
-        if (!inputFile)
-        {
+        if (!inputFile) {
             perror("Error al abrir el archivo de entrada");
             fclose(outFile);
             exit(1);
         }
 
-        // Lee el contenido del archivo de entrada
         fseek(inputFile, 0, SEEK_END);
         long fileSize = ftell(inputFile);
         rewind(inputFile);
 
-        // Crea un encabezado para el archivo
         struct FileHeader header;
         strncpy(header.name, inputFiles[i], sizeof(header.name));
         header.size = (unsigned int)fileSize;
 
-        // Escribe el encabezado en el archivo de salida
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
-        // Escribe el contenido del archivo en el archivo de salida
-        /*
-        char buffer[1024];
-        size_t bytesRead;
-        while ((bytesRead = fread(buffer, 1, sizeof(buffer), inputFile)) > 0)
-        {
-            fwrite(buffer, 1, bytesRead, outFile);
-        }
-        */
-        // Otra forma, porque creo que a como estaba seguía imponiendo máximo 1024 de lectura
-        char* buffer;
+        char *buffer;
         buffer = (char *)calloc(fileSize, sizeof(char));
         size_t bytesRead;
-        while ( (bytesRead = fread(buffer, 1, sizeof(buffer), inputFile)) > 0 ) {
+        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0) {
             fwrite(buffer, 1, bytesRead, outFile);
         }
 
-        // Libera el buffer y cierra el archivo
         free(buffer);
         fclose(inputFile);
     }
 
-    // Cierra el archivo de salida
     fclose(outFile);
     printf("Crear archivo tar: %s\n", outputFile);
 }
 
 void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[]) {
-    // Implementa la lógica para extraer archivos de un archivo tar aquí
-    // ...
+    //Implementa logica de extraer
+
+    FILE *tarFile = fopen(archiveFile, "rb");
+    if (!tarFile) {
+        perror("Error al abrir el archivo tar");
+        exit(1);
+    }
+
+    for (int i = 0; i < numFiles; i++) {
+        bool found = false;
+        struct FileHeader header;
+
+        while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
+            if (strcmp(header.name, filesToExtract[i]) == 0) {
+                printf("Extrayendo: %s\n", header.name);
+                FILE *outputFile = fopen(header.name, "wb");
+                if (!outputFile) {
+                    perror("Error al crear el archivo de salida");
+                    fclose(tarFile);
+                    exit(1);
+                }
+
+                char *buffer;
+                buffer = (char *)calloc(header.size, sizeof(char));
+                size_t bytesRead;
+
+                while (header.size > 0) {
+                    size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
+                    bytesRead = fread(buffer, 1, readSize, tarFile);
+                    fwrite(buffer, 1, bytesRead, outputFile);
+                    header.size -= bytesRead;
+                }
+
+                free(buffer);
+                fclose(outputFile);
+                found = true;
+                break;
+            } else {
+                // Si no es el archivo a extraer, avanzamos el puntero
+                fseek(tarFile, header.size, SEEK_CUR);
+            }
+        }
+
+        if (!found) {
+            printf("Archivo no encontrado: %s\n", filesToExtract[i]);
+        }
+    }
+
+    fclose(tarFile);
     printf("Extraer archivos de %s\n", archiveFile);
 }
 
 void list_tar(const char *archiveFile) {
-    // Implementa la lógica para listar los contenidos de un archivo tar aquí
-    // ...
+    FILE *tarFile = fopen(archiveFile, "rb");
+    if (!tarFile) {
+        perror("Error al abrir el archivo tar");
+        exit(1);
+    }
+
+    struct FileHeader header;
+    while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
+        printf("Nombre de archivo: %s\n", header.name);
+        printf("Tamaño del archivo: %u bytes\n", header.size);
+
+        fseek(tarFile, header.size, SEEK_CUR);
+    }
+
+    fclose(tarFile);
     printf("Listar contenido de %s\n", archiveFile);
 }
 
 void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[]) {
-    // Implementa la lógica para borrar archivos de un archivo tar aquí
-    // ...
     printf("Borrar archivos de %s\n", archiveFile);
 }
 
 void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[]) {
-    // Implementa la lógica para actualizar un archivo tar aquí
-    // ...
     printf("Actualizar archivo tar: %s\n", archiveFile);
 }
 
 int main(int argc, char *argv[]) {
-    int argIndex = 1; // Índice para recorrer los argumentos
+    int argIndex = 1;
     char *outputFile = NULL;
     int numFiles = 0;
     char *inputFiles[argc];
     bool create = false, extract = false, list = false, delete = false, update = false;
 
-    if (argc < 2) {
-        fprintf(stderr, "Comando: %s <-opcion1> <-opcion2> <-opcionN> <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "Comando: %s -c|-x|-t|-d|-u -f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
         exit(1);
     }
 
@@ -135,16 +166,6 @@ int main(int argc, char *argv[]) {
                 argIndex++;
             } else {
                 fprintf(stderr, "Error: Se esperaba un nombre de archivo después de -f\n");
-                exit(1);
-            }
-        } else if (strcmp(argv[argIndex], "-d") == 0) {
-            delete = true;
-            argIndex++;
-            if (argIndex < argc) {
-                outputFile = argv[argIndex];
-                argIndex++;
-            } else {
-                fprintf(stderr, "Error: Se esperaba un nombre de archivo después de -d\n");
                 exit(1);
             }
         } else {
