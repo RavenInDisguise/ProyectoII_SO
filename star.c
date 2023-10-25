@@ -311,17 +311,21 @@ void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[])
     verbose("Se agregó al paquete star: %s\n", archiveFile);
 }
 
+void defragment_tar(const char *archiveFile){
+
+}
+
 int main(int argc, char *argv[])
 {
     int argIndex = 1;
     char *outputFile = NULL;
     int numFiles = 0;
     char *inputFiles[argc];
-    bool create = false, extract = false, list = false, delete = false, update = false, append = false;
+    bool create = false, extract = false, list = false, defragment = false, delete = false, update = false, append = false;
 
     if (argc < 3)
     {
-        fprintf(stderr, "Comando: %s -c|-x|-t|-d|-u|-v|-vv -f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
+        fprintf(stderr, "Comando: %s -c|-x|-t|-d|-u|-p|-v|-vv -f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
         exit(1);
     }
 
@@ -361,6 +365,11 @@ int main(int argc, char *argv[])
         else if (strcmp(argv[argIndex], "-r") == 0)
         {
             append = true;
+            argIndex++;
+        }
+         else if (strcmp(argv[argIndex], "-p") == 0)
+        {
+            defragment = true;
             argIndex++;
         }
         else if (strcmp(argv[argIndex], "-f") == 0)
@@ -412,6 +421,10 @@ int main(int argc, char *argv[])
     else if (append)
     {
         append_tar(outputFile, numFiles, inputFiles);
+    } 
+    else if (defragment)
+    {
+        defragment_tar(outputFile);
     }
 
     return 0;
