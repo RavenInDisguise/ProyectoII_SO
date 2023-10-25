@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "verbose.h"
 
 #define MAX_FILE_NAME 200 // TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
@@ -191,6 +192,11 @@ void list_tar(const char *archiveFile)
             printf("Nombre de archivo: %s\n", header.name);
             verbose("Tamaño del archivo: %u bytes\n", header.size);
         }
+        else
+        {
+
+            vverbose("Tamaño del espacio libre: %u bytes\n", header.size);
+        }
         fseek(tarFile, header.size, SEEK_CUR);
     }
 
@@ -311,8 +317,84 @@ void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[])
     verbose("Se agregó al paquete star: %s\n", archiveFile);
 }
 
-void defragment_tar(const char *archiveFile){
+void defragment_tar(const char *archiveFile)
+{
+    verbose("Desfragmentando el archivo tar: %s\n", archiveFile);
 
+    FILE *tarFile = fopen(archiveFile, "rb+");
+    if (!tarFile)
+    {
+        perror("Error al abrir el archivo tar");
+        exit(1);
+    }
+
+    struct FileHeader header;
+    char buffer[MAX_ARCHIVE_SIZE];
+    long newPosition = 0; // Nueva posición del archivo
+
+    // Lista para almacenar información sobre los archivos que no se eliminarán
+    struct FileHeader *validHeaders = NULL;
+    int validHeaderCount = 0;
+
+    while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1)
+    {
+        if (!header.deleted)
+        {
+            // Copia el encabezado a la nueva posición
+            fseek(tarFile, newPosition, SEEK_SET);
+            fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
+
+            // Copia el contenido a la nueva posición
+
+            //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // EL COPIADO ES LO QUE CREO QUE FALLA A NIVEL LOGICO!!!!!
+            // El cambio de encabezado si lo hace bien
+            // De hecho curiosamente VS Code permite visualizar el contenido del tar
+
+            size_t bytesRead;
+            while (header.size > 0)
+            {
+                size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
+                bytesRead = fread(buffer, 1, readSize, tarFile);
+                printf("readSize: %zu\n", readSize); // Debug
+                printf("bytesRead: %zu\n", bytesRead); // Debug
+                if (bytesRead <= 0){
+                    break; // Salir si no se leyeron bytes
+                }
+
+                fwrite(buffer, 1, bytesRead, tarFile);
+                header.size -= bytesRead;
+            }
+
+            // Almacena el encabezado en la lista de archivos válidos
+            validHeaders = (struct FileHeader *)realloc(validHeaders, (validHeaderCount + 1) * sizeof(struct FileHeader));
+            validHeaders[validHeaderCount] = header;
+            validHeaderCount++;
+
+            // Calcula la nueva posición para el siguiente archivo
+            newPosition = ftell(tarFile);
+        }
+        else
+        {
+            // Salta archivos marcados como borrados
+            fseek(tarFile, header.size, SEEK_CUR);
+        }
+    }
+
+    // Trunca el archivo al nuevo tamaño
+    int result = ftruncate(fileno(tarFile), newPosition);
+    if (result != 0)
+    {
+        perror("Error al truncar el archivo");
+        fclose(tarFile);
+        exit(1);
+    }
+
+    fclose(tarFile);
+    verbose("Desfragmentación completada en el archivo tar: %s\n", archiveFile);
+
+    // Liberar la memoria asignada a validHeaders 
+    free(validHeaders);
 }
 
 int main(int argc, char *argv[])
@@ -367,7 +449,7 @@ int main(int argc, char *argv[])
             append = true;
             argIndex++;
         }
-         else if (strcmp(argv[argIndex], "-p") == 0)
+        else if (strcmp(argv[argIndex], "-p") == 0)
         {
             defragment = true;
             argIndex++;
@@ -421,7 +503,7 @@ int main(int argc, char *argv[])
     else if (append)
     {
         append_tar(outputFile, numFiles, inputFiles);
-    } 
+    }
     else if (defragment)
     {
         defragment_tar(outputFile);
