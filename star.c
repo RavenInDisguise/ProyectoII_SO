@@ -9,12 +9,51 @@
 #define MAX_ARCHIVE_SIZE 100
 
 // Estructura para el encabezado de archivo en el archivo de salida
-struct FileHeader
+typedef struct FileHeader
 {
     char name[MAX_FILE_NAME];
     unsigned int size;
     bool deleted; // Me permite conocer si este file fue eliminado; ELIMINADO = T
-};
+} f_h;
+
+const int HEADER_SIZE = sizeof(f_h);
+
+// Busca bloques vacios en el paquete y devuelve la posicion del primer bloque vacio que pueda almacenar el archivo a buscar
+// Si no hay bloques vacios, o no encuentra uno de suficiente tamaño devuelve -1
+int check_file_in_block(FILE *tarFile, FILE *matchFile)
+{
+    int sizeToMatch, foundPosition = -1;
+    vverbose("Buscando bloques libres compatibles...\n");
+
+    // Calcular el sizeToMatch
+    fseek(matchFile, 0, SEEK_END);
+    sizeToMatch = ftell(matchFile);
+    rewind(matchFile);
+
+    vverbose("Buscando bloques de al menos %u bytes\n");
+
+    f_h header;
+    while (fread(&header, HEADER_SIZE, 1, tarFile) == 1)
+    {
+        // si es marcado como deleted es un bloque vacio
+        if (header.deleted)
+        {
+            vverbose("Bloque libre de %u bytes...\n", header.size);
+            if (sizeToMatch <= header.size)
+            {
+                vverbose("Bloque es de tamaño suficiente!\n");
+                // Encuentra la posicion actual, menos el header, para que sobreescriba en caso de append
+                foundPosition = (ftell(tarFile) - HEADER_SIZE);
+                rewind(tarFile);
+                rewind(matchFile);
+                return foundPosition;
+            }
+        }
+    }
+    rewind(tarFile);
+    rewind(matchFile);
+    return foundPosition;
+}
 
 void create_tar(const char *outputFile, int numFiles, char *inputFiles[])
 {
@@ -95,6 +134,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
                 if (!outputFile)
                 {
                     perror("Error al crear el archivo de salida");
+                    fclose(outputFile);
                     fclose(tarFile);
                     exit(1);
                 }
@@ -194,7 +234,7 @@ void list_tar(const char *archiveFile)
         }
         else
         {
-
+            vverbose("----Bloque vacio----\n");
             vverbose("Tamaño del espacio libre: %u bytes\n", header.size);
         }
         fseek(tarFile, header.size, SEEK_CUR);
@@ -256,6 +296,116 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
     verbose("Borrado completado en el archivo tar: %s\n", archiveFile);
 }
 
+void append_tar_without_check(const char *archiveFile, int numFiles, char *filesToAppend[])
+{
+    verbose("Añadiendo archivos al paquete %s\n", archiveFile);
+
+    FILE *outFile = fopen(archiveFile, "ab");
+    if (!outFile)
+    {
+        perror("Error al abrir el archivo de salida\n");
+        fclose(outFile);
+        exit(1);
+    }
+
+    for (int i = 0; i < numFiles; i++)
+    {
+
+        vverbose("Leyendo %s en memoria...\n", filesToAppend[i]);
+        FILE *inputFile = fopen(filesToAppend[i], "rb");
+        if (!inputFile)
+        {
+            perror("Error al abrir el archivo de entrada\n");
+            fclose(inputFile);
+            fclose(outFile);
+            exit(1);
+        }
+
+        vverbose("Calculando tamaño de archivo en paquete...\n");
+        fseek(inputFile, 0, SEEK_END);
+        long fileSize = ftell(inputFile);
+        rewind(inputFile);
+
+        vverbose("Creando cabecera de metadatos...\n");
+        struct FileHeader header;
+        strncpy(header.name, filesToAppend[i], sizeof(header.name));
+        header.size = (unsigned int)fileSize;
+        fwrite(&header, sizeof(struct FileHeader), 1, outFile);
+
+        vverbose("Copiando datos al paquete %s...\n", archiveFile);
+        char *buffer;
+        buffer = (char *)calloc(fileSize, sizeof(char));
+        size_t bytesRead;
+        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0)
+        {
+            fwrite(buffer, 1, bytesRead, outFile);
+        }
+
+        vverbose("Liberando buffers de memoria...\n");
+        free(buffer);
+        fclose(inputFile);
+        vverbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
+    }
+
+    fclose(outFile);
+    verbose("Se agregó al paquete star: %s\n", archiveFile);
+}
+
+void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToAppend[])
+{
+    verbose("Añadiendo archivos al paquete %s\n", archiveFile);
+
+    FILE *outFile = fopen(archiveFile, "ab");
+    if (!outFile)
+    {
+        perror("Error al abrir el archivo de salida\n");
+        fclose(outFile);
+        exit(1);
+    }
+
+    for (int i = 0; i < numFiles; i++)
+    {
+
+        verbose("Leyendo %s en memoria...\n", filesToAppend[i]);
+        FILE *inputFile = fopen(filesToAppend[i], "rb");
+        if (!inputFile)
+        {
+            perror("Error al abrir el archivo de entrada\n");
+            fclose(inputFile);
+            fclose(outFile);
+            exit(1);
+        }
+
+        vverbose("Calculando tamaño de archivo en paquete...\n");
+        fseek(inputFile, 0, SEEK_END);
+        long fileSize = ftell(inputFile);
+        rewind(inputFile);
+
+        vverbose("Creando cabecera de metadatos...\n");
+        struct FileHeader header;
+        strncpy(header.name, filesToAppend[i], sizeof(header.name));
+        header.size = (unsigned int)fileSize;
+        fwrite(&header, sizeof(struct FileHeader), 1, outFile);
+
+        verbose("Copiando datos al paquete %s...\n", archiveFile);
+        char *buffer;
+        buffer = (char *)calloc(fileSize, sizeof(char));
+        size_t bytesRead;
+        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0)
+        {
+            fwrite(buffer, 1, bytesRead, outFile);
+        }
+
+        vverbose("Liberando buffers de memoria...\n");
+        free(buffer);
+        fclose(inputFile);
+        verbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
+    }
+
+    fclose(outFile);
+    verbose("Se agregó con éxito al paquete star: %s\n", archiveFile);
+}
+
 void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 {
     verbose("Actualizar archivo tar: %s\n", archiveFile);
@@ -279,65 +429,103 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             exit(1);
         }
 
-    }
-
-}
-
-/*
- * TODO: implementar logica de buscar hueco donde quepa el archivo nuevo
- */
-void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[])
-{
-    verbose("Añadiendo archivos al paquete %s\n", archiveFile);
-
-    FILE *outFile = fopen(archiveFile, "ab");
-    if (!outFile)
-    {
-        perror("Error al abrir el archivo de salida\n");
-        fclose(outFile);
-        exit(1);
-    }
-
-    for (int i = 0; i < numFiles; i++)
-    {
-
-        verbose("Leyendo %s en memoria...\n", filesToAppend[i]);
-        FILE *inputFile = fopen(filesToAppend[i], "rb");
-        if (!inputFile)
-        {
-            perror("Error al abrir el archivo de entrada\n");
-            fclose(outFile);
-            exit(1);
-        }
-
-        verbose("Calculando tamaño de archivo en paquete...\n");
+        int newFileSize;
         fseek(inputFile, 0, SEEK_END);
-        long fileSize = ftell(inputFile);
+        newFileSize = ftell(inputFile);
         rewind(inputFile);
 
-        verbose("Creando cabecera de metadatos...\n");
-        struct FileHeader header;
-        strncpy(header.name, filesToAppend[i], sizeof(header.name));
-        header.size = (unsigned int)fileSize;
-        fwrite(&header, sizeof(struct FileHeader), 1, outFile);
+        // Primer check: si cabe en el bloque original
+        f_h header;
+        bool hasCrumbs = false;
 
-        verbose("Copiando datos al paquete %s...\n", archiveFile);
-        char *buffer;
-        buffer = (char *)calloc(fileSize, sizeof(char));
-        size_t bytesRead;
-        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0)
+        while (fread(&header, HEADER_SIZE, 1, outFile) == 1)
         {
-            fwrite(buffer, 1, bytesRead, outFile);
+            hasCrumbs = false;
+            if (!header.deleted && (strcmp(header.name, filesToUpdate[i]) == 0))
+            {
+                if (newFileSize <= header.size)
+                {
+                    // Se sobreescriben los datos
+                    // Calcular cuanto de espacio vacio queda de la sobreescritura
+                    int crumbBytes = header.size - newFileSize;
+
+                    // Si el tamaño del sobrante es menor al de una cabecera quedará como bytes flotantes
+                    if (crumbBytes < HEADER_SIZE)
+                    {
+                        hasCrumbs = true;
+                    }
+                    
+                    if (!hasCrumbs)
+                    {
+                        // Solo modifica el tamaño en la cabecera si hay suficiente espacio para minimo otra
+                        header.size = newFileSize;
+                    }
+
+                    // Regresa el puntero al inicio de la cabecera para sobreescribir
+                    fseek(outFile, -HEADER_SIZE, SEEK_CUR);
+                    fwrite(&header, HEADER_SIZE, 1, outFile);
+                    char *buffer;
+                    buffer = (char *)calloc(newFileSize, sizeof(char));
+                    size_t bytesRead;
+                    while ((bytesRead = fread(buffer, 1, newFileSize, inputFile)) > 0)
+                    {
+                        fwrite(buffer, 1, bytesRead, outFile);
+                    }
+
+                    free(buffer);
+                    fclose(inputFile);
+
+                    if (!hasCrumbs)
+                    {
+                        f_h emptyHeader;
+                        strncpy(emptyHeader.name, "EMPTY", sizeof(emptyHeader.name));
+                        emptyHeader.size = crumbBytes - HEADER_SIZE;
+                        emptyHeader.deleted = true;
+                    }
+
+                    // Finaliza ejecucion
+                    free(buffer);
+                    fclose(inputFile);
+                    return;
+                }
+            }
         }
 
-        verbose("Liberando buffers de memoria...\n");
-        free(buffer);
-        fclose(inputFile);
-        verbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
+        rewind(outFile);
+
+
+        // Buscar si cabe en un bloque vacio
+        int offset = check_file_in_block(outFile, inputFile);
+
+        // Si no hay bloques disponibles para el update se marca el bloque anterior como deleted y se hace append
+        if (offset < 0)
+        {
+            vverbose("No se encontró bloques de suficiente tamaño, se va a agregar al final del paquete\n");
+            fclose(outFile);
+            fclose(inputFile);
+            vverbose("Borrando entrada anterior...\n");
+            delete_tar(archiveFile, 1, (char *[]){filesToUpdate[i]});
+            vverbose("Agregando entrada al final...\n");
+            append_tar_without_check(archiveFile, 1, (char *[]){filesToUpdate[i]});
+        }
+        // Caso contrario: actualizar en el offset dado
+        else
+        {
+            // Coloca el puntero al lugar donde se va a sobreescribir los datos
+            fseek(outFile, offset, SEEK_SET);
+            rewind(inputFile);
+            f_h updateHeader;
+            strncpy(updateHeader.name, filesToUpdate[i], sizeof(updateHeader.name));
+            updateHeader.size = newFileSize;
+            updateHeader.deleted = false;
+
+            fwrite(&header, HEADER_SIZE, 1, outFile);
+            fwrite(&inputFile, newFileSize, 1, outFile);
+            fclose(inputFile);
+            fclose(outFile);
+        }
     }
 
-    fclose(outFile);
-    verbose("Se agregó al paquete star: %s\n", archiveFile);
 }
 
 void defragment_tar(const char *archiveFile)
@@ -595,7 +783,8 @@ int main(int argc, char *argv[])
     }
     else if (append)
     {
-        append_tar(outputFile, numFiles, inputFiles);
+        // TODO cambiar nombre de funcion
+        append_tar_with_check(outputFile, numFiles, inputFiles);
     }
     else if (defragment)
     {
