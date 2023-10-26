@@ -259,6 +259,28 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
 void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 {
     verbose("Actualizar archivo tar: %s\n", archiveFile);
+
+    FILE *outFile = fopen(archiveFile, "wb");
+    if (!outFile)
+    {
+        perror("Error al abrir el archivo star\n");
+        fclose(outFile);
+        exit(1);
+    }
+
+    for (int i = 0; i < numFiles; i++)
+    {
+        verbose("Leyendo %s en memoria...", filesToUpdate[i]);
+        FILE *inputFile = fopen(filesToUpdate[i], "rb");
+        if (!inputFile)
+        {
+            perror("Error al abrir el archivo de entrada\n");
+            fclose(outFile);
+            exit(1);
+        }
+
+    }
+
 }
 
 /*
@@ -272,6 +294,7 @@ void append_tar(const char *archiveFile, int numFiles, char *filesToAppend[])
     if (!outFile)
     {
         perror("Error al abrir el archivo de salida\n");
+        fclose(outFile);
         exit(1);
     }
 
@@ -403,14 +426,84 @@ int main(int argc, char *argv[])
     char *outputFile = NULL;
     int numFiles = 0;
     char *inputFiles[argc];
-    bool create = false, extract = false, list = false, defragment = false, delete = false, update = false, append = false;
+    int commandSize;
+    bool create = false, extract = false, list = false, delete = false, update = false, append = false, defragment = false;
+    bool usedFile = false;
 
     if (argc < 3)
     {
-        fprintf(stderr, "Comando: %s -c|-x|-t|-d|-u|-p|-v|-vv -f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
+        fprintf(stderr, "Comando: %s -c|x|t|d|u|v|vv|f <archivoSalida> <archivo1> <archivo2> ... <archivoN>\n", argv[0]);
         exit(1);
     }
 
+    char* commandStr = argv[1];
+    commandSize = strlen(commandStr);
+
+    int i = 1; // inicia en 1 porque se asume el comando inicia con el "-"
+
+    while (i < commandSize)
+    {
+        if (commandStr[i] == 'c')
+        {
+            create = true;
+        }
+        else if (commandStr[i] == 'x')
+        {
+            extract = true;
+        }
+        else if (commandStr[i] == 't')
+        {
+            list = true;
+        }
+        else if (commandStr[i] == 'r')
+        {
+            append = true;
+        }
+        else if (commandStr[i] == 'u')
+        {
+            update = true;
+        }
+        else if (commandStr[i] == 'd')
+        {
+            delete = true;
+        }
+        else if (commandStr[i] == 'p')
+        {
+            defragment = true;
+        }
+        else if (commandStr[i] == 'v')
+        {
+            if (i + 1 < commandSize)
+            {
+                if (commandStr[i+1] == 'v')
+                {
+                    setStrongVerbose(true);
+                }
+            }
+            setVerbose(true);
+        }
+        else if (commandStr[i] == 'f')
+        {
+            // Aqui se supone es que significa que le estoy dando el archivo star
+            // Si los comandos ahora son siempre en un solo argumento, el outputfile siempre sera el argumento 2
+            outputFile = argv[2];
+            usedFile = true;
+        }
+        i++;
+    }
+
+    if (!usedFile)
+    {
+        fprintf(stderr, "Error: Se debe especificar un nombre de archivo después del comando -f\n");
+        exit(1);
+    }
+
+    // recorre el resto de argumentos para los inputFiles
+    for (int i = 3; i < argc; i++)
+    {
+        inputFiles[numFiles++] = argv[i];
+    }
+/*
     while (argIndex < argc)
     {
         if (strcmp(argv[argIndex], "-c") == 0)
@@ -479,7 +572,7 @@ int main(int argc, char *argv[])
             argIndex++;
         }
     }
-
+*/
     if (create)
     {
         create_tar(outputFile, numFiles, inputFiles);
