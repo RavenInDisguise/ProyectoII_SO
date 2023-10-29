@@ -55,6 +55,28 @@ int check_file_in_block(FILE *tarFile, FILE *matchFile)
     return foundPosition;
 }
 
+int fuse_empty_blocks(const char *tarFile)
+{
+    vverbose("Buscando bloques vacios contiguos...\n");
+    FILE *tarPkg = fopen(tarFile, "r+");
+    if (!tarPkg)
+    {
+        perror("Error al abrir el paquete star\n");
+        exit(1);
+    }
+
+
+
+    f_h header;
+
+    while (fread(&header, HEADER_SIZE, 1, tarPkg) == 1)
+    {
+        
+    }
+
+    return 0;
+}
+
 void create_tar(const char *outputFile, int numFiles, char *inputFiles[])
 {
     verbose("Nombre del archivo de salida: %s\n", outputFile);
@@ -229,13 +251,15 @@ void list_tar(const char *archiveFile)
     {
         if (!header.deleted)
         {
-            printf("Nombre de archivo: %s\t\t", header.name);
+            printf("Nombre de archivo: %s\n", header.name);
             verbose("Tamaño del archivo: %u bytes\n", header.size);
+            printf("----------\n");
         }
         else
         {
-            vverbose("----Bloque vacio----\t\t");
+            verbose("----Bloque vacio----\n");
             vverbose("Tamaño del espacio libre: %u bytes\n", header.size);
+            verbose("----------\n");
         }
         fseek(tarFile, header.size, SEEK_CUR);
     }
