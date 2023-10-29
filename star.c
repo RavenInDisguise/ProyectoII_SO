@@ -229,12 +229,12 @@ void list_tar(const char *archiveFile)
     {
         if (!header.deleted)
         {
-            printf("Nombre de archivo: %s\n", header.name);
+            printf("Nombre de archivo: %s\t\t", header.name);
             verbose("Tamaño del archivo: %u bytes\n", header.size);
         }
         else
         {
-            vverbose("----Bloque vacio----\n");
+            vverbose("----Bloque vacio----\t\t");
             vverbose("Tamaño del espacio libre: %u bytes\n", header.size);
         }
         fseek(tarFile, header.size, SEEK_CUR);
@@ -440,7 +440,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 {
     verbose("Actualizar archivo tar: %s\n", archiveFile);
 
-    FILE *outFile = fopen(archiveFile, "wb");
+    FILE *outFile = fopen(archiveFile, "r+");
     if (!outFile)
     {
         perror("Error al abrir el archivo star\n");
@@ -463,6 +463,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
         fseek(inputFile, 0, SEEK_END);
         newFileSize = ftell(inputFile);
         rewind(inputFile);
+        vverbose("Nuevo tamaño del archivo: %u bytes\n", newFileSize);
 
         // Primer check: si cabe en el bloque original
         f_h header;
@@ -475,6 +476,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             {
                 if (newFileSize <= header.size)
                 {
+                    vverbose("Archivo es menor al almacenado previamente...\n");
                     // Se sobreescriben los datos
                     // Calcular cuanto de espacio vacio queda de la sobreescritura
                     int crumbBytes = header.size - newFileSize;
@@ -492,8 +494,11 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     }
 
                     // Regresa el puntero al inicio de la cabecera para sobreescribir
+                    vverbose("Posicion actual del puntero: %lu\n", ftell(outFile));
                     fseek(outFile, -HEADER_SIZE, SEEK_CUR);
+                    vverbose("Se supone que se mueve %lu bytes para atras: %lu\n", HEADER_SIZE, ftell(outFile));
                     fwrite(&header, HEADER_SIZE, 1, outFile);
+                    vverbose("Aqui deberia volver al print de posicion actual: %lu\n", ftell(outFile));
                     char *buffer;
                     buffer = (char *)calloc(newFileSize, sizeof(char));
                     size_t bytesRead;
@@ -501,6 +506,8 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     {
                         fwrite(buffer, 1, bytesRead, outFile);
                     }
+                    
+                    vverbose("Aqui deberia moverse estar en %lu porque se movio %ld bytes de reescritura\n", ftell(outFile), newFileSize);
 
 
                     if (!hasCrumbs)
@@ -541,17 +548,23 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
         else
         {
             // Coloca el puntero al lugar donde se va a sobreescribir los datos
+            vverbose("Encontro un bloque en posicion %lu, actualmente en %lu\n", offset, ftell(outFile));
             fseek(outFile, offset, SEEK_SET);
             rewind(inputFile);
+            vverbose("Ahora %lu(off) y %lu(pos) deberian ser iguales\n", offset, ftell(outFile));
             f_h updateHeader;
             strncpy(updateHeader.name, filesToUpdate[i], sizeof(updateHeader.name));
             updateHeader.size = newFileSize;
             updateHeader.deleted = false;
-
+            vverbose("Escribiendo %ld bytes (cabecera) actual: %lu\n", HEADER_SIZE, ftell(outFile));
             fwrite(&header, HEADER_SIZE, 1, outFile);
+            vverbose("Escritura de cabecera hecha, actual: %lu\n", ftell(outFile));
+            vverbose("Ahora escribir %ld bytes, actual: %lu\n", newFileSize, ftell(outFile));
             fwrite(&inputFile, newFileSize, 1, outFile);
+            vverbose("Escritura hecha, nueva posicion: %lu\n",ftell(outFile));
             fclose(inputFile);
             fclose(outFile);
+            verbose("Update done");
             return;
         }
     }
