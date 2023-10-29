@@ -206,7 +206,8 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
 
             if (!found)
             {
-                perror("Archivo no encontrado: %s\n", filesToExtract[i]);
+                //perror("Archivo no encontrado: %s\n", filesToExtract[i]);
+                perror("Archivo no encontrado"); // La funcion perror no tiene para formatear texto
             }
         }
     }
@@ -382,19 +383,48 @@ void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToA
         long fileSize = ftell(inputFile);
         rewind(inputFile);
 
-        vverbose("Creando cabecera de metadatos...\n");
-        struct FileHeader header;
-        strncpy(header.name, filesToAppend[i], sizeof(header.name));
-        header.size = (unsigned int)fileSize;
-        fwrite(&header, sizeof(struct FileHeader), 1, outFile);
-
-        verbose("Copiando datos al paquete %s...\n", archiveFile);
+        // Buscar si cabe en un bloque vacio
+        int offset = check_file_in_block(outFile, inputFile);
         char *buffer;
-        buffer = (char *)calloc(fileSize, sizeof(char));
-        size_t bytesRead;
-        while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0)
+        // Si no hay bloques disponibles para el update se agrega al final
+        if (offset < 0)
         {
-            fwrite(buffer, 1, bytesRead, outFile);
+            vverbose("No se encontró bloques de suficiente tamaño, se va a agregar al final del paquete\n");
+            fclose(outFile);
+            fclose(inputFile);
+            vverbose("Agregando entrada al final...\n");
+            append_tar_without_check(archiveFile, 1, (char *[]){filesToAppend[i]});
+            return;
+        }
+        // Caso contrario: agregar en el offset dado
+        else
+        {
+            vverbose("Se encontró un espacio en el offset: %ld del paquete", offset);
+            // Coloca el puntero al lugar donde se va a sobreescribir los datos (del bloque vacio)
+            fseek(outFile, offset, SEEK_SET);
+            rewind(inputFile);
+
+            vverbose("Creando cabecera de metadatos...\n");
+            f_h header;
+            strncpy(header.name, filesToAppend[i], sizeof(header.name));
+            header.size = (unsigned int)fileSize;
+            fwrite(&header, HEADER_SIZE, 1, outFile);
+
+            vverbose("Copiando datos al paquete %s...\n", archiveFile);
+            buffer = (char *)calloc(fileSize, sizeof(char));
+            size_t bytesRead;
+            while ((bytesRead = fread(buffer, 1, fileSize, inputFile)) > 0)
+            {
+                fwrite(buffer, 1, bytesRead, outFile);
+            }
+
+            vverbose("Liberando buffers de memoria...\n");
+            free(buffer);
+            fclose(inputFile);
+            vverbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
+
+            fclose(inputFile);
+            fclose(outFile);
         }
 
         vverbose("Liberando buffers de memoria...\n");
@@ -473,8 +503,6 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                         fwrite(buffer, 1, bytesRead, outFile);
                     }
 
-                    free(buffer);
-                    fclose(inputFile);
 
                     if (!hasCrumbs)
                     {
@@ -482,6 +510,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                         strncpy(emptyHeader.name, "EMPTY", sizeof(emptyHeader.name));
                         emptyHeader.size = crumbBytes - HEADER_SIZE;
                         emptyHeader.deleted = true;
+                        fwrite(&emptyHeader, HEADER_SIZE, 1, outFile);
                     }
 
                     // Finaliza ejecucion
@@ -507,6 +536,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             delete_tar(archiveFile, 1, (char *[]){filesToUpdate[i]});
             vverbose("Agregando entrada al final...\n");
             append_tar_without_check(archiveFile, 1, (char *[]){filesToUpdate[i]});
+            return;
         }
         // Caso contrario: actualizar en el offset dado
         else
@@ -523,6 +553,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             fwrite(&inputFile, newFileSize, 1, outFile);
             fclose(inputFile);
             fclose(outFile);
+            return;
         }
     }
 }
