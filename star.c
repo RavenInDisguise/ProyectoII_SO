@@ -206,7 +206,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
 
             if (!found)
             {
-                printf("Archivo no encontrado: %s\n", filesToExtract[i]);
+                perror("Archivo no encontrado: %s\n", filesToExtract[i]);
             }
         }
     }
@@ -267,7 +267,8 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
             {
                 if (strcmp(header.name, filesToDelete[i]) == 0)
                 {
-                    vverbose("Borrando: %s\n", header.name);
+                    verbose("Borrando: %s\n", header.name);
+                    vverbose("Tamaño del archivo: %u bytes\n", header.size);
                     header.deleted = true;
                     fseek(tarFile, fileOffset, SEEK_SET);
                     fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
@@ -454,7 +455,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     {
                         hasCrumbs = true;
                     }
-                    
+
                     if (!hasCrumbs)
                     {
                         // Solo modifica el tamaño en la cabecera si hay suficiente espacio para minimo otra
@@ -493,7 +494,6 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 
         rewind(outFile);
 
-
         // Buscar si cabe en un bloque vacio
         int offset = check_file_in_block(outFile, inputFile);
 
@@ -525,7 +525,6 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             fclose(outFile);
         }
     }
-
 }
 
 void defragment_tar(const char *archiveFile)
@@ -567,9 +566,10 @@ void defragment_tar(const char *archiveFile)
             {
                 size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
                 bytesRead = fread(buffer, 1, readSize, tarFile);
-                printf("readSize: %zu\n", readSize); // Debug
+                printf("readSize: %zu\n", readSize);   // Debug
                 printf("bytesRead: %zu\n", bytesRead); // Debug
-                if (bytesRead <= 0){
+                if (bytesRead <= 0)
+                {
                     break; // Salir si no se leyeron bytes
                 }
 
@@ -604,7 +604,7 @@ void defragment_tar(const char *archiveFile)
     fclose(tarFile);
     verbose("Desfragmentación completada en el archivo tar: %s\n", archiveFile);
 
-    // Liberar la memoria asignada a validHeaders 
+    // Liberar la memoria asignada a validHeaders
     free(validHeaders);
 }
 
@@ -624,7 +624,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    char* commandStr = argv[1];
+    char *commandStr = argv[1];
     commandSize = strlen(commandStr);
 
     int i = 1; // inicia en 1 porque se asume el comando inicia con el "-"
@@ -663,7 +663,7 @@ int main(int argc, char *argv[])
         {
             if (i + 1 < commandSize)
             {
-                if (commandStr[i+1] == 'v')
+                if (commandStr[i + 1] == 'v')
                 {
                     setStrongVerbose(true);
                 }
@@ -691,76 +691,76 @@ int main(int argc, char *argv[])
     {
         inputFiles[numFiles++] = argv[i];
     }
-/*
-    while (argIndex < argc)
-    {
-        if (strcmp(argv[argIndex], "-c") == 0)
+    /*
+        while (argIndex < argc)
         {
-            create = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-x") == 0)
-        {
-            extract = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-t") == 0)
-        {
-            list = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-u") == 0)
-        {
-            update = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-vv") == 0)
-        {
-            setStrongVerbose(true);
-            setVerbose(true);
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-v") == 0)
-        {
-            setVerbose(true);
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-r") == 0)
-        {
-            append = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-p") == 0)
-        {
-            defragment = true;
-            argIndex++;
-        }
-        else if (strcmp(argv[argIndex], "-f") == 0)
-        {
-            argIndex++;
-            if (argIndex < argc)
+            if (strcmp(argv[argIndex], "-c") == 0)
             {
-                outputFile = argv[argIndex];
+                create = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-x") == 0)
+            {
+                extract = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-t") == 0)
+            {
+                list = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-u") == 0)
+            {
+                update = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-vv") == 0)
+            {
+                setStrongVerbose(true);
+                setVerbose(true);
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-v") == 0)
+            {
+                setVerbose(true);
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-r") == 0)
+            {
+                append = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-p") == 0)
+            {
+                defragment = true;
+                argIndex++;
+            }
+            else if (strcmp(argv[argIndex], "-f") == 0)
+            {
+                argIndex++;
+                if (argIndex < argc)
+                {
+                    outputFile = argv[argIndex];
+                    argIndex++;
+                }
+                else
+                {
+                    fprintf(stderr, "Error: Se esperaba un nombre de archivo después de -f\n");
+                    exit(1);
+                }
+            }
+            else if (strcmp(argv[argIndex], "-d") == 0)
+            {
+                delete = true;
                 argIndex++;
             }
             else
             {
-                fprintf(stderr, "Error: Se esperaba un nombre de archivo después de -f\n");
-                exit(1);
+                inputFiles[numFiles++] = argv[argIndex];
+                argIndex++;
             }
         }
-        else if (strcmp(argv[argIndex], "-d") == 0)
-        {
-            delete = true;
-            argIndex++;
-        }
-        else
-        {
-            inputFiles[numFiles++] = argv[argIndex];
-            argIndex++;
-        }
-    }
-*/
+    */
     if (create)
     {
         create_tar(outputFile, numFiles, inputFiles);
