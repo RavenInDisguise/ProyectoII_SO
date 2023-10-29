@@ -206,8 +206,12 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
 
             if (!found)
             {
+<<<<<<< HEAD
                 //perror("Archivo no encontrado: %s\n", filesToExtract[i]);
                 perror("Archivo no encontrado"); // La funcion perror no tiene para formatear texto
+=======
+                printf("Archivo no encontrado: %s\n", filesToExtract[i]);
+>>>>>>> ef67905f63c1aea5d743f01692309e830b9584fc
             }
         }
     }
@@ -451,7 +455,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 
     for (int i = 0; i < numFiles; i++)
     {
-        verbose("Leyendo %s en memoria...", filesToUpdate[i]);
+        verbose("Leyendo %s en memoria...\n", filesToUpdate[i]);
         FILE *inputFile = fopen(filesToUpdate[i], "rb");
         if (!inputFile)
         {
