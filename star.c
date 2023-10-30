@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include "verbose.h"
 
-#define MAX_FILE_NAME 200 // TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
+#define MAX_FILE_NAME 256 // TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
 #define MAX_ARCHIVE_SIZE 100
 
 // Estructura para el encabezado de archivo en el archivo de salida
@@ -13,6 +13,7 @@ typedef struct FileHeader
 {
     char name[MAX_FILE_NAME];
     unsigned int size;
+    unsigned int jump;
     bool deleted; // Me permite conocer si este file fue eliminado; ELIMINADO = T
 } f_h;
 
@@ -22,7 +23,7 @@ const int HEADER_SIZE = sizeof(f_h);
 // Si no hay bloques vacios, o no encuentra uno de suficiente tamaño devuelve -1
 int check_file_in_block(FILE *tarFile, FILE *matchFile)
 {
-    int sizeToMatch, foundPosition = -1;
+    int sizeToMatch, foundPosition;
     vverbose("Buscando bloques libres compatibles...\n");
 
     // Calcular el sizeToMatch
@@ -38,12 +39,14 @@ int check_file_in_block(FILE *tarFile, FILE *matchFile)
         // si es marcado como deleted es un bloque vacio
         if (header.deleted)
         {
-            vverbose("Bloque libre de %u bytes...\n", header.size);
+            vverbose("Bloque libre de %lu bytes...\n", header.size);
             if (sizeToMatch <= header.size)
             {
                 vverbose("Bloque es de tamaño suficiente!\n");
                 // Encuentra la posicion actual, menos el header, para que sobreescriba en caso de append
+                vverbose("Posicion actual for some fucking reason: %ld", ftell(tarFile));
                 foundPosition = (ftell(tarFile) - HEADER_SIZE);
+                vverbose("foundPosition calculado (debe ser el ftell menos 268: %d)", foundPosition);
                 rewind(tarFile);
                 rewind(matchFile);
                 return foundPosition;
@@ -52,7 +55,7 @@ int check_file_in_block(FILE *tarFile, FILE *matchFile)
     }
     rewind(tarFile);
     rewind(matchFile);
-    return foundPosition;
+    return -1;
 }
 
 int fuse_empty_blocks(const char *tarFile)
@@ -111,6 +114,8 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[])
         struct FileHeader header;
         strncpy(header.name, inputFiles[i], sizeof(header.name));
         header.size = (unsigned int)fileSize;
+        header.jump = (unsigned int)fileSize;
+        header.deleted = false;
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
         vverbose("Copiando datos al paquete %s...\n", outputFile);
@@ -221,7 +226,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
                     }
                     else
                     {
-                        fseek(tarFile, header.size, SEEK_CUR);
+                        fseek(tarFile, header.jump, SEEK_CUR);
                     }
                 }
             }
@@ -261,7 +266,7 @@ void list_tar(const char *archiveFile)
             vverbose("Tamaño del espacio libre: %u bytes\n", header.size);
             verbose("----------\n");
         }
-        fseek(tarFile, header.size, SEEK_CUR);
+        fseek(tarFile, header.jump, SEEK_CUR);
     }
 
     fclose(tarFile);
@@ -292,8 +297,9 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
                 if (strcmp(header.name, filesToDelete[i]) == 0)
                 {
                     verbose("Borrando: %s\n", header.name);
-                    vverbose("Tamaño del archivo: %u bytes\n", header.size);
+                    vverbose("Tamaño del archivo: %u bytes\n", header.jump);
                     header.deleted = true;
+                    header.size = header.jump;
                     fseek(tarFile, fileOffset, SEEK_SET);
                     fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
                     found = true;
@@ -304,7 +310,7 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
             if (!found)
             {
                 fileOffset = ftell(tarFile);
-                fileOffset += header.size;
+                fileOffset += header.jump;
                 fseek(tarFile, fileOffset, SEEK_SET);
             }
         }
@@ -312,7 +318,7 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
         {
             // Salta los archivos marcados como borrados
             fileOffset = ftell(tarFile);
-            fileOffset += header.size;
+            fileOffset += header.jump;
             fseek(tarFile, fileOffset, SEEK_SET);
         }
     }
@@ -355,6 +361,8 @@ void append_tar_without_check(const char *archiveFile, int numFiles, char *files
         struct FileHeader header;
         strncpy(header.name, filesToAppend[i], sizeof(header.name));
         header.size = (unsigned int)fileSize;
+        header.jump = (unsigned int)fileSize;
+        header.deleted = false;
         fwrite(&header, sizeof(struct FileHeader), 1, outFile);
 
         vverbose("Copiando datos al paquete %s...\n", archiveFile);
@@ -407,6 +415,8 @@ void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToA
         rewind(inputFile);
 
         // Buscar si cabe en un bloque vacio
+        rewind(outFile);
+        rewind(inputFile);
         int offset = check_file_in_block(outFile, inputFile);
         char *buffer;
         // Si no hay bloques disponibles para el update se agrega al final
@@ -431,6 +441,8 @@ void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToA
             f_h header;
             strncpy(header.name, filesToAppend[i], sizeof(header.name));
             header.size = (unsigned int)fileSize;
+            header.jump = (unsigned int)fileSize;
+            header.deleted = false;
             fwrite(&header, HEADER_SIZE, 1, outFile);
 
             vverbose("Copiando datos al paquete %s...\n", archiveFile);
@@ -445,9 +457,6 @@ void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToA
             free(buffer);
             fclose(inputFile);
             vverbose("Se agregó el archivo %s al paquete %s\n", filesToAppend[i], archiveFile);
-
-            fclose(inputFile);
-            fclose(outFile);
         }
 
         vverbose("Liberando buffers de memoria...\n");
@@ -492,30 +501,34 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
         // Primer check: si cabe en el bloque original
         f_h header;
         bool hasCrumbs = false;
-
+        vverbose("Primer check: si cabe en el archivo anterior...\n");
         while (fread(&header, HEADER_SIZE, 1, outFile) == 1)
         {
             hasCrumbs = false;
-            if (!header.deleted && (strcmp(header.name, filesToUpdate[i]) == 0))
+            if (!(header.deleted) && (strcmp(header.name, filesToUpdate[i]) == 0))
             {
+                vverbose("Encontro el archivo original, probando tamaño...\n");
+                vverbose("Original: %lu bytes vs nuevo: %lu bytes\n", header.size, newFileSize);
                 if (newFileSize <= header.size)
                 {
                     vverbose("Archivo es menor al almacenado previamente...\n");
                     // Se sobreescriben los datos
                     // Calcular cuanto de espacio vacio queda de la sobreescritura
-                    int crumbBytes = header.size - newFileSize;
-
+                    int crumbBytes = (int)header.size - newFileSize;
                     // Si el tamaño del sobrante es menor al de una cabecera quedará como bytes flotantes
                     if (crumbBytes < HEADER_SIZE)
                     {
                         hasCrumbs = true;
                     }
-
+/*
                     if (!hasCrumbs)
                     {
                         // Solo modifica el tamaño en la cabecera si hay suficiente espacio para minimo otra
                         header.size = newFileSize;
+                        header.jump = header.jump;
                     }
+*/
+                    header.size = (unsigned int)newFileSize;
 
                     // Regresa el puntero al inicio de la cabecera para sobreescribir
                     vverbose("Posicion actual del puntero: %lu\n", ftell(outFile));
@@ -530,7 +543,6 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     {
                         fwrite(buffer, 1, bytesRead, outFile);
                     }
-                    
                     vverbose("Aqui deberia moverse estar en %lu porque se movio %ld bytes de reescritura\n", ftell(outFile), newFileSize);
 
 
@@ -538,7 +550,8 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     {
                         f_h emptyHeader;
                         strncpy(emptyHeader.name, "EMPTY", sizeof(emptyHeader.name));
-                        emptyHeader.size = crumbBytes - HEADER_SIZE;
+                        emptyHeader.size = (unsigned int)(crumbBytes - HEADER_SIZE);
+                        emptyHeader.jump = (unsigned int)(crumbBytes - HEADER_SIZE);
                         emptyHeader.deleted = true;
                         fwrite(&emptyHeader, HEADER_SIZE, 1, outFile);
                     }
@@ -546,14 +559,17 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     // Finaliza ejecucion
                     free(buffer);
                     fclose(inputFile);
+                    fclose(outFile);
                     return;
                 }
             }
         }
 
         rewind(outFile);
+        rewind(inputFile);
 
         // Buscar si cabe en un bloque vacio
+        vverbose("No se encontró el original, buscando bloques vacios...\n");
         int offset = check_file_in_block(outFile, inputFile);
 
         // Si no hay bloques disponibles para el update se marca el bloque anterior como deleted y se hace append
@@ -578,7 +594,8 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             vverbose("Ahora %lu(off) y %lu(pos) deberian ser iguales\n", offset, ftell(outFile));
             f_h updateHeader;
             strncpy(updateHeader.name, filesToUpdate[i], sizeof(updateHeader.name));
-            updateHeader.size = newFileSize;
+            updateHeader.size = (unsigned int)newFileSize;
+            updateHeader.jump = (unsigned int)0;
             updateHeader.deleted = false;
             vverbose("Escribiendo %ld bytes (cabecera) actual: %lu\n", HEADER_SIZE, ftell(outFile));
             fwrite(&header, HEADER_SIZE, 1, outFile);
@@ -588,7 +605,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
             vverbose("Escritura hecha, nueva posicion: %lu\n",ftell(outFile));
             fclose(inputFile);
             fclose(outFile);
-            verbose("Update done");
+            verbose("Update done\n");
             return;
         }
     }
