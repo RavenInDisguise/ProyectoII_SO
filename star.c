@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include "verbose.h"
 
-#define MAX_FILE_NAME 256 // TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
+#define MAX_FILE_NAME 200 // TUVE QUE SUBIRLE AL LIMITE PARA HACER PRUEBAS CON NUESTROS FILES
 #define MAX_ARCHIVE_SIZE 100
 
 // Estructura para el encabezado de archivo en el archivo de salida
@@ -136,32 +136,24 @@ void create_tar(const char *outputFile, int numFiles, char *inputFiles[])
     fclose(outFile);
     verbose("Se creó el archivo star: %s\n", outputFile);
 }
-
-void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
-{
+void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[]) {
     FILE *tarFile = fopen(archiveFile, "rb");
-    if (!tarFile)
-    {
+    if (!tarFile) {
         perror("Error al abrir el archivo tar");
         exit(1);
     }
 
-    if (numFiles == 0)
-    {
+    if (numFiles == 0) {
         // No se especificaron archivos específicos para extraer,
         // por lo que extraeremos todos los archivos del .tar.
         verbose("Extrayendo todos los archivos del archivo tar: %s\n", archiveFile);
         struct FileHeader header;
-        while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1)
-        {
-            if (!header.deleted)
-            {
+        while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
+            if (!header.deleted) {
                 vverbose("Extrayendo: %s\n", header.name);
                 FILE *outputFile = fopen(header.name, "wb");
-                if (!outputFile)
-                {
+                if (!outputFile) {
                     perror("Error al crear el archivo de salida");
-                    fclose(outputFile);
                     fclose(tarFile);
                     exit(1);
                 }
@@ -170,8 +162,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
                 buffer = (char *)calloc(header.size, sizeof(char));
                 size_t bytesRead;
 
-                while (header.size > 0)
-                {
+                while (header.size > 0) {
                     size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
                     bytesRead = fread(buffer, 1, readSize, tarFile);
                     fwrite(buffer, 1, bytesRead, outputFile);
@@ -180,28 +171,23 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
 
                 free(buffer);
                 fclose(outputFile);
+            } else {
+                fseek(tarFile, header.size, SEEK_CUR); // Saltar archivos marcados como eliminados
             }
         }
-    }
-    else
-    {
+    } else {
         // Se especificaron archivos específicos para extraer.
         verbose("Extrayendo archivos especificados del archivo tar: %s\n", archiveFile);
-        for (int i = 0; i < numFiles; i++)
-        {
-            bool found = false;
+        for (int i = 0; i < numFiles; i++) {
             struct FileHeader header;
+            bool found = false;
 
-            while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1)
-            {
-                if (!header.deleted)
-                {
-                    if (strcmp(header.name, filesToExtract[i]) == 0)
-                    {
+            while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
+                if (!header.deleted) {
+                    if (strcmp(header.name, filesToExtract[i]) == 0) {
                         vverbose("Extrayendo: %s\n", header.name);
                         FILE *outputFile = fopen(header.name, "wb");
-                        if (!outputFile)
-                        {
+                        if (!outputFile) {
                             perror("Error al crear el archivo de salida");
                             fclose(tarFile);
                             exit(1);
@@ -211,8 +197,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
                         buffer = (char *)calloc(header.size, sizeof(char));
                         size_t bytesRead;
 
-                        while (header.size > 0)
-                        {
+                        while (header.size > 0) {
                             size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
                             bytesRead = fread(buffer, 1, readSize, tarFile);
                             fwrite(buffer, 1, bytesRead, outputFile);
@@ -223,16 +208,15 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
                         fclose(outputFile);
                         found = true;
                         break;
+                    } else {
+                        fseek(tarFile, header.size, SEEK_CUR); // Saltar otros archivos
                     }
-                    else
-                    {
-                        fseek(tarFile, header.jump, SEEK_CUR);
-                    }
+                } else {
+                    fseek(tarFile, header.size, SEEK_CUR); // Saltar archivos marcados como eliminados
                 }
             }
 
-            if (!found)
-            {
+            if (!found) {
                 printf("Archivo no encontrado: %s\n", filesToExtract[i]);
             }
         }
@@ -241,6 +225,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[])
     fclose(tarFile);
     verbose("Extracción completada del archivo tar: %s\n", archiveFile);
 }
+
 
 void list_tar(const char *archiveFile)
 {
@@ -611,86 +596,63 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
     }
 }
 
-void defragment_tar(const char *archiveFile)
-{
-    verbose("Desfragmentando el archivo tar: %s\n", archiveFile);
+void defragment_tar(const char *archiveFile) {
+    verbose("Desfragmentación en curso en el archivo tar: %s\n", archiveFile);
 
-    FILE *tarFile = fopen(archiveFile, "rb+");
-    if (!tarFile)
-    {
+    FILE *tarFile = fopen(archiveFile, "r+");
+    if (!tarFile) {
         perror("Error al abrir el archivo tar");
         exit(1);
     }
 
     struct FileHeader header;
-    char buffer[MAX_ARCHIVE_SIZE];
-    long newPosition = 0; // Nueva posición del archivo
+    long currentOffset = 0;
+    long newOffset = 0;
 
-    // Lista para almacenar información sobre los archivos que no se eliminarán
-    struct FileHeader *validHeaders = NULL;
-    int validHeaderCount = 0;
+    while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1) {
+        vverbose("Haciendo copia de los archivos...\n");
+        if (header.deleted) {
+            vverbose("No se hace copia de los archivos marcados como eliminado.\n");
+            fseek(tarFile, header.size, SEEK_CUR);
+        } else {
+            if (currentOffset != newOffset) {
+                // Si no están en la misma posición, debemos mover el archivo a la nueva posición (newOffset)
+                // y actualizar el encabezado.
+                verbose("Se copia el contenido de los archivos que no fueron eliminados.\n");
+                fseek(tarFile, currentOffset, SEEK_SET);
+                char *buffer;
+                buffer = (char *)calloc(header.size, sizeof(char));
+                size_t bytesRead = 0;
 
-    while (fread(&header, sizeof(struct FileHeader), 1, tarFile) == 1)
-    {
-        if (!header.deleted)
-        {
-            // Copia el encabezado a la nueva posición
-            fseek(tarFile, newPosition, SEEK_SET);
-            fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
-
-            // Copia el contenido a la nueva posición
-
-            //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // EL COPIADO ES LO QUE CREO QUE FALLA A NIVEL LOGICO!!!!!
-            // El cambio de encabezado si lo hace bien
-            // De hecho curiosamente VS Code permite visualizar el contenido del tar
-
-            size_t bytesRead;
-            while (header.size > 0)
-            {
-                size_t readSize = (header.size > sizeof(buffer)) ? sizeof(buffer) : header.size;
-                bytesRead = fread(buffer, 1, readSize, tarFile);
-                printf("readSize: %zu\n", readSize);   // Debug
-                printf("bytesRead: %zu\n", bytesRead); // Debug
-                if (bytesRead <= 0)
-                {
-                    break; // Salir si no se leyeron bytes
+                while (bytesRead < header.size) {
+                    size_t readSize = (header.size - bytesRead > sizeof(buffer)) ? sizeof(buffer) : (header.size - bytesRead);
+                    size_t read = fread(buffer, 1, readSize, tarFile);
+                    if (read > 0) {
+                        fwrite(buffer, 1, read, tarFile);
+                        bytesRead += read;
+                    }
                 }
 
-                fwrite(buffer, 1, bytesRead, tarFile);
-                header.size -= bytesRead;
+                vverbose("Actualiza el encabezado en la nueva posición \n");
+                fseek(tarFile, newOffset, SEEK_SET);
+                fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
+
+                // Coloca el puntero al final del nuevo bloque.
+                fseek(tarFile, newOffset + header.size, SEEK_SET);
+                free(buffer);
             }
-
-            // Almacena el encabezado en la lista de archivos válidos
-            validHeaders = (struct FileHeader *)realloc(validHeaders, (validHeaderCount + 1) * sizeof(struct FileHeader));
-            validHeaders[validHeaderCount] = header;
-            validHeaderCount++;
-
-            // Calcula la nueva posición para el siguiente archivo
-            newPosition = ftell(tarFile);
-        }
-        else
-        {
-            // Salta archivos marcados como borrados
-            fseek(tarFile, header.size, SEEK_CUR);
+            newOffset = ftell(tarFile); // Guarda la nueva posición.
+            currentOffset = newOffset + header.size; // Calcula la posición actual.
         }
     }
 
-    // Trunca el archivo al nuevo tamaño
-    int result = ftruncate(fileno(tarFile), newPosition);
-    if (result != 0)
-    {
-        perror("Error al truncar el archivo");
-        fclose(tarFile);
-        exit(1);
-    }
-
+    vverbose("Trunca el archivo para eliminar el contenido restante de los archivos eliminados.\n");
+    ftruncate(fileno(tarFile), ftell(tarFile));
     fclose(tarFile);
-    verbose("Desfragmentación completada en el archivo tar: %s\n", archiveFile);
 
-    // Liberar la memoria asignada a validHeaders
-    free(validHeaders);
+    verbose("Desfragmentación completada en el archivo tar: %s\n", archiveFile);
 }
+
 
 int main(int argc, char *argv[])
 {
