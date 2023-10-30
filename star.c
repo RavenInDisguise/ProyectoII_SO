@@ -89,7 +89,7 @@ int update_header_size(const char* tarFile, int offset, int newSize)
 void fuse_empty_blocks(const char *tarFile)
 {
     vverbose("Buscando bloques vacios contiguos...\n");
-    FILE *tarPkg = fopen(tarFile, "r+b");
+    FILE *tarPkg = fopen(tarFile, "r+");
     if (!tarPkg)
     {
         perror("Error al abrir el paquete star\n");
@@ -128,10 +128,7 @@ void fuse_empty_blocks(const char *tarFile)
         offset = ftell(tarPkg);
         fseek(tarPkg, header.jump, SEEK_CUR);
     }
-
-    fclose(tarPkg);
-
-    return;
+    
 }
 
 void create_tar(const char *outputFile, int numFiles, char *inputFiles[])
@@ -226,7 +223,7 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[]) 
                 free(buffer);
                 fclose(outputFile);
             } else {
-                fseek(tarFile, header.jump, SEEK_CUR); // Saltar archivos marcados como eliminados
+                fseek(tarFile, header.size, SEEK_CUR); // Saltar archivos marcados como eliminados
             }
         }
     } else {
@@ -263,10 +260,10 @@ void extract_tar(const char *archiveFile, int numFiles, char *filesToExtract[]) 
                         found = true;
                         break;
                     } else {
-                        fseek(tarFile, header.jump, SEEK_CUR); // Saltar otros archivos
+                        fseek(tarFile, header.size, SEEK_CUR); // Saltar otros archivos
                     }
                 } else {
-                    fseek(tarFile, header.jump, SEEK_CUR); // Saltar archivos marcados como eliminados
+                    fseek(tarFile, header.size, SEEK_CUR); // Saltar archivos marcados como eliminados
                 }
             }
 
@@ -314,7 +311,7 @@ void list_tar(const char *archiveFile)
 
 void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
 {
-    FILE *tarFile = fopen(archiveFile, "r+b");
+    FILE *tarFile = fopen(archiveFile, "rb+");
     if (!tarFile)
     {
         perror("Error al abrir el archivo tar");
@@ -364,15 +361,13 @@ void delete_tar(const char *archiveFile, int numFiles, char *filesToDelete[])
 
     fclose(tarFile);
     verbose("Borrado completado en el archivo tar: %s\n", archiveFile);
-    vverbose("Buscando fusionar bloques...\n");
-    fuse_empty_blocks(archiveFile);
 }
 
 void append_tar_without_check(const char *archiveFile, int numFiles, char *filesToAppend[])
 {
     verbose("Añadiendo archivos al paquete %s\n", archiveFile);
 
-    FILE *outFile = fopen(archiveFile, "a+b");
+    FILE *outFile = fopen(archiveFile, "ab");
     if (!outFile)
     {
         perror("Error al abrir el archivo de salida\n");
@@ -429,7 +424,7 @@ void append_tar_with_check(const char *archiveFile, int numFiles, char *filesToA
 {
     verbose("Añadiendo archivos al paquete %s\n", archiveFile);
 
-    FILE *outFile = fopen(archiveFile, "a+b");
+    FILE *outFile = fopen(archiveFile, "ab");
     if (!outFile)
     {
         perror("Error al abrir el archivo de salida\n");
@@ -514,7 +509,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 {
     verbose("Actualizar archivo tar: %s\n", archiveFile);
 
-    FILE *outFile = fopen(archiveFile, "r+b");
+    FILE *outFile = fopen(archiveFile, "r+");
     if (!outFile)
     {
         perror("Error al abrir el archivo star\n");
@@ -601,10 +596,6 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
                     free(buffer);
                     fclose(inputFile);
                     fclose(outFile);
-
-                    vverbose("Buscando fusionar bloques...\n");
-                    fuse_empty_blocks(archiveFile);
-
                     return;
                 }
             }
@@ -656,11 +647,10 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
     }
 }
 
-void defragment_tar(const char *archiveFile)
-{
+void defragment_tar(const char *archiveFile) {
     verbose("Desfragmentación en curso en el archivo tar: %s\n", archiveFile);
 
-    FILE *tarFile = fopen(archiveFile, "r+b");
+    FILE *tarFile = fopen(archiveFile, "r+");
     if (!tarFile) {
         perror("Error al abrir el archivo tar");
         exit(1);
@@ -674,7 +664,7 @@ void defragment_tar(const char *archiveFile)
         vverbose("Haciendo copia de los archivos...\n");
         if (header.deleted) {
             vverbose("No se hace copia de los archivos marcados como eliminado.\n");
-            fseek(tarFile, header.jump, SEEK_CUR);
+            fseek(tarFile, header.size, SEEK_CUR);
         } else {
             if (currentOffset != newOffset) {
                 // Si no están en la misma posición, debemos mover el archivo a la nueva posición (newOffset)
@@ -699,7 +689,7 @@ void defragment_tar(const char *archiveFile)
                 fwrite(&header, sizeof(struct FileHeader), 1, tarFile);
 
                 // Coloca el puntero al final del nuevo bloque.
-                fseek(tarFile, newOffset + header.jump, SEEK_SET);
+                fseek(tarFile, newOffset + header.size, SEEK_SET);
                 free(buffer);
             }
             newOffset = ftell(tarFile); // Guarda la nueva posición.
