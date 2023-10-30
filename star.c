@@ -96,6 +96,8 @@ void fuse_empty_blocks(const char *tarFile)
         exit(1);
     }
 
+
+
     f_h header;
     size_t readSize;
     bool prevDeleted = false;
