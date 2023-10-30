@@ -70,13 +70,18 @@ int update_header_size(const char* tarFile, int offset, int newSize)
     f_h header;
     int result;
     vverbose("Actualizando tamaño de bloques vacíos...\n");
+    vverbose("Se dio como posicion el bloque en %lu\n", offset);
     fseek(tarPkg, offset, SEEK_SET);
+    vverbose("la buena teoria dice que se posiciono en esa posicion: %lu\n", ftell(tarPkg));
     fread(&header, HEADER_SIZE, 1, tarPkg);
+    vverbose("leyo la cabecera y debio crecer %d bytes y ahora esta en %lu\n", HEADER_SIZE, ftell(tarPkg));
     // Volver al inicio para luego hacer el update
     fseek(tarPkg, -(HEADER_SIZE), SEEK_CUR);
+    vverbose("aqui debio volver al inicio de esa cabecera: %lu\n", ftell(tarPkg));
     header.jump = newSize;
     header.size = newSize;
     result = fwrite(&header, HEADER_SIZE, 1, tarPkg);
+    vverbose("volvio a escribir la cabecera, ahora se movio nuevamente al final de esta: %lu\n", ftell(tarPkg));
 
     return result;
 }
@@ -97,13 +102,10 @@ void fuse_empty_blocks(const char *tarFile)
     unsigned int prevSize = 0;
     int offset = 0;
     bool foundConsecutiveDeleted = false;
-    vverbose("TEST!\n");
     while ((readSize = fread(&header, HEADER_SIZE, 1, tarPkg)) > 0)
     {
-        vverbose("Entra al while loop\n");
         if(!!(header.deleted))
         {
-            vverbose("Encuentra uno borrado\n");
             if(prevDeleted)
             {
                 vverbose("Se encontró bloques vacíos consecutivos\n");
@@ -520,7 +522,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
 
     for (int i = 0; i < numFiles; i++)
     {
-        verbose("Leyendo %s en memoria...", filesToUpdate[i]);
+        verbose("Leyendo %s en memoria...\n", filesToUpdate[i]);
         FILE *inputFile = fopen(filesToUpdate[i], "rb");
         if (!inputFile)
         {
@@ -610,7 +612,7 @@ void update_tar(const char *archiveFile, int numFiles, char *filesToUpdate[])
         rewind(inputFile);
 
         // Buscar si cabe en un bloque vacio
-        vverbose("No se encontró el original, buscando bloques vacios...\n");
+        vverbose("No pasó el primer check, buscando bloques vacios...\n");
         int offset = check_file_in_block(outFile, inputFile);
 
         // Si no hay bloques disponibles para el update se marca el bloque anterior como deleted y se hace append
